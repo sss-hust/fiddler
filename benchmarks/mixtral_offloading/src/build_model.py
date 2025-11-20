@@ -62,6 +62,7 @@ def replace_attn_layers(
 ) -> None:
     
     for layer in model.model.layers:
+        # 为什么要替换gate层？因为导入时没有专家以及门控
         layer.block_sparse_moe.gate = nn.Linear(
             config.hidden_size,
             config.num_local_experts,

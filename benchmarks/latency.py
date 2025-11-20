@@ -33,11 +33,11 @@ if __name__ == "__main__":
         default=1,
         help="batch size for inference.",
     )
-    parser.add_argument("--beam_num", type=int, default=1, help="Beam search number.")
+    parser.add_argument("--beam_width", type=int, default=1, help="Beam search width.")
 
     args = parser.parse_args()
 
-    path_json = "./ShareGPT_V3_unfiltered_cleaned_split.json"
+    path_json = "/home/yangfu/model/Mixtral-8x7B-Instruct-v0.1/ShareGPT_V3_unfiltered_cleaned_split.json"
     with open(path_json, "r") as f:
         data = json.load(f)
 

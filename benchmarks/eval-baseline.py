@@ -67,8 +67,8 @@ def init_mixtral_offload():
     quantized = False
 
     if not quantized:
-        state_path = "Mixtral-8x7B-Instruct-v0.1"
-        model_name = "mistralai/Mixtral-8x7B-Instruct-v0.1"
+        state_path = "/home/yangfu/model/Mixtral-8x7B-Instruct-v0.1"
+        model_name = "/home/yangfu/model/Mixtral-8x7B-Instruct-v0.1"
     else:
         state_path = "Mixtral-8x7B-Instruct-v0.1-offloading-demo"
         model_name = "lavawolfiee/Mixtral-8x7B-Instruct-v0.1-offloading-demo"
@@ -79,7 +79,7 @@ def init_mixtral_offload():
 
     ##### Change this to 5 if you have only 12 GB of GPU VRAM #####
     # offload_per_layer = 4
-    offload_per_layer = 7
+    offload_per_layer = 5
     ###############################################################
 
     num_experts = config.num_local_experts
@@ -129,7 +129,7 @@ def eval(model):
 
     device = torch.device("cuda:0")
 
-    path_json = 'Mixtral-8x7B-Instruct-v0.1/ShareGPT_V3_unfiltered_cleaned_split.json'
+    path_json = '/home/yangfu/model/Mixtral-8x7B-Instruct-v0.1/ShareGPT_V3_unfiltered_cleaned_split.json'
     with open(path_json, 'r') as f:
         data = json.load(f)
     texts = []
@@ -145,7 +145,7 @@ def eval(model):
 
     n_sample = 3
 
-    model_name = "mistralai/Mixtral-8x7B-Instruct-v0.1"
+    model_name = "/home/yangfu/model/Mixtral-8x7B-Instruct-v0.1"
     tokenizer = AutoTokenizer.from_pretrained(model_name)
 
     for input_token in [16, 32, 64, 128]:
@@ -155,6 +155,8 @@ def eval(model):
             num_tokens = 0
             logging.info(
                 f'evaluating -- input_token: {input_token}, output_token: {output_token}')
+            prefill_time_sum = 0
+            decode_time_sum = 0
             for _ in range(n_sample):
                 while True:
                     text = texts[idx_text]

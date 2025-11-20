@@ -43,6 +43,8 @@ def weight_copy(model, from_cpu=True):
             )
             torch.cuda.synchronize()
             ret_time.append(time.time() - tick)
+            model.model.layers[i].block_sparse_moe.experts[0].to("cpu")             
+            torch.cuda.empty_cache() 
     return np.array(ret_time)
 
 
@@ -146,7 +148,7 @@ if __name__ == "__main__":
     )
 
     args = parser.parse_args()
-
+    args.beam_width = 1
     model = FiddlerMixtral(args)
 
     def format_output(array):
