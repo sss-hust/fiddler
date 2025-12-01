@@ -7,7 +7,7 @@ import torch
 import torch.nn.functional as F
 from torch.nn.utils.rnn import pad_sequence
 import transformers
-
+import torch.cuda.nvtx as nvtx
 
 class FiddlerMixtral:
     def __init__(self, args):
@@ -391,16 +391,20 @@ class FiddlerMixtral:
         search_start = False
         probs = torch.full((input_ids.shape[0], 1), 1.0)
 
+        nvtx.range_push("Generate_token")
         for i_token in range(output_token):
+            step_name = "Prefill" if not is_decode else f"Decode_{i_token}"
+            nvtx.range_push(step_name) 
             if self.beam_width == 1:
-                print(self.tokenizer.decode(input_ids[0]))
+                # print(self.tokenizer.decode(input_ids[0]))
                 # TODO: streaming output for beam search
             if is_decode:
                 for i in range(input_ids.shape[0]):
                     decode_strings[i] += " " + self.tokenizer.decode(input_ids[i, :])
-
+            nvtx.range_push("Model_Forward")
             logits = self.mixtral_forward(input_ids, position_ids, is_decode)
-
+            nvtx.range_pop()
+            nvtx.range_push("CPU_Logic")
             logits = logits.to("cpu")
             # logits.shape: (batch_size, seq_len, vocab_size)
 
@@ -437,10 +441,12 @@ class FiddlerMixtral:
                 .view(-1, 1)
             )
             # position_ids.shape: (1, 1)
+            nvtx.range_pop()
             if not is_decode:
                 prefill_time += time.time() - tick
                 tick = time.time()
             is_decode = True
+            nvtx.range_pop()
         decode_time = time.time() - tick
         probs = probs.view(-1, self.beam_width)
         max_ids = torch.argmax(probs, dim=-1)
