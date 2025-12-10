@@ -149,7 +149,7 @@ def eval(model):
     tokenizer = AutoTokenizer.from_pretrained(model_name)
 
     for input_token in [16, 32, 64, 128]:
-        for output_token in [16, 32, 64, 128, 256, 512]:
+        for output_token in [16]:
             idx_text = 0
             time_sum = 0
             num_tokens = 0
@@ -167,28 +167,62 @@ def eval(model):
                 # print(f'input text: {text.split()[:input_token]}')
                 input_ids = tokenizer.encode(
                     text, return_tensors='pt').to(device)
-                start_time = time.time()
-                result = model.generate(
-                    input_ids=input_ids[:, :input_token],
-                    max_new_tokens=output_token,
-                    min_new_tokens=output_token,
-                    do_sample=True,
-                    temperature=0.9,
-                    top_p=0.9,
-                    pad_token_id=tokenizer.eos_token_id,
-                    return_dict_in_generate=True
-                )
-                end_time = time.time()
-                time_sum += end_time - start_time
+                # 1. Prefill 阶段 (处理 Prompt)
+                torch.cuda.synchronize()
+                t_start = time.time()
+                
+                # 执行第一次前向传播，处理所有输入 Token
+                with torch.no_grad():
+                    outputs = model(input_ids[:, :input_token], use_cache=True)
+                
+                torch.cuda.synchronize()
+                t_prefill_end = time.time()
+                
+                # 记录 Prefill 时间
+                prefill_cur = t_prefill_end - t_start
+                prefill_time_sum += prefill_cur
+                
+                # 准备进入 Decode 阶段
+                past_key_values = outputs.past_key_values
+                # 取最后一个 Token 的 logits 并使用 Greedy Search 选择下一个 Token
+                next_token_logits = outputs.logits[:, -1, :]
+                next_token = torch.argmax(next_token_logits, dim=-1).unsqueeze(0)
+                
+                # 2. Decode 阶段 (逐个生成 Token)
+                # 我们需要总共生成 output_token 个新 Token
+                # 第 1 个已经在 Prefill 阶段计算出了 Logits，所以只需再循环 output_token - 1 次
+                
+                torch.cuda.synchronize()
+                t_decode_start = time.time()
+                
+                with torch.no_grad():
+                    for _ in range(output_token - 1):
+                        outputs = model(next_token, past_key_values=past_key_values, use_cache=True)
+                        past_key_values = outputs.past_key_values
+                        next_token_logits = outputs.logits[:, -1, :]
+                        next_token = torch.argmax(next_token_logits, dim=-1).unsqueeze(0)
+                
+                torch.cuda.synchronize()
+                t_decode_end = time.time()
+                
+                # 记录 Decode 时间
+                decode_cur = t_decode_end - t_decode_start
+                decode_time_sum += decode_cur
+                
+                # 更新总时间 (为了兼容原有逻辑)
+                time_sum += (prefill_cur + decode_cur)
                 # count the number of tokens in the output
-                num_tokens += result["sequences"].shape[1]
+                # num_tokens += result["sequences"].shape[1]
                 # print(f'output text: {tokenizer.decode(result["sequences"][0])}')
 
             logging.info(
                 f'*******************\n'
                 f'input_token: {input_token}, output_token: {output_token}, '
-                f'time: {time_sum / n_sample:.2f}, '
-                f'token/s: {output_token / (time_sum / n_sample):.2f}\n'
+                # === 修改 C: 输出 Prefill 和 Decode 时间 ===
+                f'prefill_time: {prefill_time_sum / n_sample:.4f}, '
+                f'decode_time: {decode_time_sum / n_sample:.4f}, '
+                f'token/s: {output_token / ((prefill_time_sum + decode_time_sum) / n_sample):.2f}\n'
+                # =========================================
                 f'*******************\n')
 
 

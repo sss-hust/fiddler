@@ -5,6 +5,8 @@ import json
 import os
 import random
 import sys
+import torch
+import time
 
 sys.path.append("../src")
 from fiddler import FiddlerMixtral
@@ -35,6 +37,7 @@ class NVTXProfiler:
             nvtx.range_push(f"Decode_{self.decode_step}")
 
     def post_hook(self, module, inputs, outputs):
+        print("----------------------------------\n")
         torch.cuda.synchronize()
         elapsed = (time.perf_counter() - self.forward_start_ts) * 1000  # ms
 
@@ -78,11 +81,26 @@ class NVTXProfiler:
             "decode_steps": len(decode_times),                 # token 数量
         }
 
-def attach_nvtx_hooks(model):
+def attach_nvtx_hooks(model_or_wrapper):
+    # 如果是 wrapper（不是 nn.Module），自动找内部模型
+    if not isinstance(model_or_wrapper, torch.nn.Module):
+        # 遍历属性，找出一个 nn.Module
+        for name in dir(model_or_wrapper):
+            try:
+                attr = getattr(model_or_wrapper, name)
+                if isinstance(attr, torch.nn.Module):
+                    model = attr
+                    break
+            except:
+                continue
+        else:
+            raise ValueError("No nn.Module found inside the wrapper object.")
+    else:
+        model = model_or_wrapper
+
     profiler = NVTXProfiler()
     model._nvtx_pre_hook = model.register_forward_pre_hook(profiler.pre_hook)
     model._nvtx_post_hook = model.register_forward_hook(profiler.post_hook)
-
     return profiler
 
 if __name__ == "__main__":
@@ -127,7 +145,7 @@ if __name__ == "__main__":
     random.seed(0)
     random.shuffle(texts)
     model = FiddlerMixtral(args)
-    profiler = attach_nvtx_hooks(model)
+    profiler = attach_nvtx_hooks(model.model)
     n_sample = 10
 
     for input_token in [128]:
